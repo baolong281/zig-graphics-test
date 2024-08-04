@@ -1,6 +1,7 @@
 const std = @import("std");
 const gl = @import("gl");
 const glfw = @import("glfw");
+const math = std.math;
 
 const glfw_log = std.log.scoped(.glfw);
 const gl_log = std.log.scoped(.gl);
@@ -50,7 +51,7 @@ pub fn main() !void {
 
     std.debug.print("GLFW Init Succeeded.\n", .{});
 
-    const window: *glfw.Window = try glfw.createWindow(800, 640, "Hello World", null, null);
+    const window: *glfw.Window = try glfw.createWindow(800, 800, "Hello World", null, null);
     defer glfw.destroyWindow(window);
 
     glfw.makeContextCurrent(window);
@@ -66,7 +67,7 @@ pub fn main() !void {
     defer gl.makeProcTableCurrent(null);
 
     // -- setting up viewport --
-    gl.Viewport(0, 0, 800, 640);
+    gl.Viewport(0, 0, 800, 800);
 
     // -- create and compile shaders --
     const vertex_shader = gl.CreateShader(gl.VERTEX_SHADER);
@@ -89,9 +90,19 @@ pub fn main() !void {
 
     // define the triangles vertices
     const vertices = [_]f32{
-        -0.5, -0.5, 0.0,
-        0.5,  -0.5, 0.0,
-        0.0,  0.5,  0.0,
+        -0.5, -0.5 * math.sqrt(3) / 3.0, 0.0,
+        0.5,  -0.5 * math.sqrt(3) / 3.0, 0.0,
+        0.0,  0.5 + 0.5 * math.sqrt(3) / 3.0, 0.0,
+        -0.5 / 2.0, 0.5 * math.sqrt(3) / 3.0, 0.0,
+        0.5 / 2.0, 0.5 * math.sqrt(3) / 3.0, 0.0,
+        0.0, -0.5 * math.sqrt(3) / 3.0, 0.0,
+    };
+
+    const indices = [_]u32
+    {
+        0, 3, 5,
+        3, 4, 2,
+        5, 4, 1,
     };
 
     // -- allocate and bind vertex buffer in gpu memory --
@@ -109,14 +120,24 @@ pub fn main() !void {
     gl.BufferData(gl.ARRAY_BUFFER, @sizeOf(f32) * vertices.len, &vertices, gl.STATIC_DRAW);
     defer gl.DeleteBuffers(1, (&VBO)[0..1]);
 
+    // allocate and bind index buffer in gpu memory
+    var EBO: c_uint = undefined;
+    gl.GenBuffers(1, (&EBO)[0..1]);
+    gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, EBO);
+    gl.BufferData(gl.ELEMENT_ARRAY_BUFFER, @sizeOf(u32) * indices.len, &indices, gl.STATIC_DRAW);
+    defer gl.DeleteBuffers(1, (&EBO)[0..1]);
+
     // this specifies the layout of the data in the VBO
     gl.VertexAttribPointer(0, 3, gl.FLOAT, gl.FALSE, 3 * @sizeOf(f32), 0);
 
     // enable the vertex attribute
     gl.EnableVertexAttribArray(0);
 
+    // bind these to bring them into effect
     gl.BindBuffer(gl.ARRAY_BUFFER, 0);
     gl.BindVertexArray(0);
+
+    gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, 0);
 
     while (!glfw.windowShouldClose(window)) {
         if (glfw.getKey(window, glfw.KeyEscape) == glfw.Press) {
@@ -131,7 +152,7 @@ pub fn main() !void {
         // bind the vertex array
         gl.BindVertexArray(VAO);
         // draw the triangle
-        gl.DrawArrays(gl.TRIANGLES, 0, 3);
+        gl.DrawElements(gl.TRIANGLES, 9, gl.UNSIGNED_INT, 0);
         glfw.swapBuffers(window);
 
 
