@@ -35,12 +35,15 @@ pub fn build(b: *std.Build) void {
     const zglfw_mod = b.addModule("glfw", .{ .root_source_file = b.path("src/glfw.zig") });
     exe.root_module.addImport("glfw", zglfw_mod);
 
-    const zgl = b.dependency("zgl", .{
-        .target = target,
-        .optimize = optimize,
+    const gl_bindings = @import("zigglgen").generateBindingsModule(b, .{
+        .api = .gl,
+        .version = .@"4.1",
+        .profile = .core,
+        .extensions = &.{ .ARB_clip_control, .NV_scissor_exclusive },
     });
-    exe.root_module.addImport("zgl", zgl.module("zgl"));
 
+    // Import the generated module.
+    exe.root_module.addImport("gl", gl_bindings);
 
 
     // This *creates* a Run step in the build graph, to be executed when another

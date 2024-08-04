@@ -15,9 +15,9 @@
     // Once all dependencies are fetched, `zig build` no longer requires
     // internet connectivity.
     .dependencies = .{
-        .zgl = .{
-            .url = "https://github.com/ziglibs/zgl/archive/e483862224a536d9ab409cd127a418f198b52ab3.tar.gz",
-            .hash = "122059f1b282209c57cc374baff46ab0498c422c271ec6960d18f8f769195f993df5",
+        .zigglgen = .{
+            .url = "https://github.com/castholm/zigglgen/releases/download/v0.2.3/zigglgen.tar.gz",
+            .hash = "1220f4188a5e1bdbb15fd50e9ea322c0721384eeba9bc077e4179b0b0eeaa7fe4ad9",
         },
     },
     .paths = .{
