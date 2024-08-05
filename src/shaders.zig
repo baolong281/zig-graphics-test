@@ -4,20 +4,23 @@ const gl = @import("gl");
 const vertex_shader_source =
     \\#version 330 core
     \\layout (location = 0) in vec3 vertex_position;
+    \\layout (location = 1) in vec3 vertex_color;
+    \\out vec3 fragmentColor;
     \\uniform mat4 MVP;
     \\void main()
     \\{
     \\     gl_Position = MVP * vec4(vertex_position.x, vertex_position.y, vertex_position.z, 1.0);
-    // \\    gl_Position = vec4(vertex_position, 1.0);
+     \\    fragmentColor = vertex_color;
     \\}
 ;
 
 const fragment_shader_source =
     \\#version 330 core
+    \\in vec3 fragmentColor;
     \\out vec4 FragColor;
     \\void main()
     \\{
-    \\    FragColor = vec4(0.2f, 0.5f, 0.2f, 1.0f);
+    \\    FragColor = vec4(fragmentColor, 1.0f);
     \\}
 ;
 
