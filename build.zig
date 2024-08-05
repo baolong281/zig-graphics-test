@@ -45,12 +45,11 @@ pub fn build(b: *std.Build) void {
     // Import the generated module.
     exe.root_module.addImport("gl", gl_bindings);
 
-   const zlm = b.dependency("zalgebra", .{
+    const zlm = b.dependency("zalgebra", .{
         // .target = target,
         // .optimize = optimize,
     });
     exe.root_module.addImport("zalgebra", zlm.module("zalgebra"));
-
 
     // This *creates* a Run step in the build graph, to be executed when another
     // step is evaluated that depends on it. The next line below will establish
@@ -90,6 +89,8 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    exe_unit_tests.root_module.addImport("zalgebra", zlm.module("zalgebra"));
+    exe_unit_tests.root_module.addImport("gl", gl_bindings);
 
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
 

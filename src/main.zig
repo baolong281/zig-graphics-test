@@ -3,6 +3,7 @@ const gl = @import("gl");
 const glfw = @import("glfw");
 const sqrt = std.math.sqrt;
 const shaders = @import("shaders.zig");
+const bmp = @import("bmp.zig");
 const za = @import("zalgebra");
 var random = std.rand.DefaultPrng.init(142857);
 
@@ -21,8 +22,7 @@ fn logGLFWError(error_code: c_int, description: [*:0]const u8) callconv(.C) void
 const WIDTH = 800;
 const HEIGHT = 800;
 
-pub fn main() !void {
-
+fn initGLFW() !*c_long {
     // -- initializing glfw window --
     _ = glfw.setErrorCallback(logGLFWError);
 
@@ -34,7 +34,6 @@ pub fn main() !void {
     std.debug.print("GLFW {}.{}.{}\n", .{ major, minor, rev });
 
     try glfw.init();
-    defer glfw.terminate();
 
     glfw.windowHint(glfw.ContextVersionMajor, 3);
     glfw.windowHint(glfw.ContextVersionMinor, 3);
@@ -43,132 +42,138 @@ pub fn main() !void {
     std.debug.print("GLFW Init Succeeded.\n", .{});
 
     const window: *glfw.Window = try glfw.createWindow(WIDTH, HEIGHT, "Hello World", null, null);
-    defer glfw.destroyWindow(window);
-
     glfw.makeContextCurrent(window);
-    defer glfw.makeContextCurrent(null);
 
-    // -- binding opengl context --
+    std.debug.print("GLFW Init Succeeded.\n", .{});
+
+    return window;
+}
+
+fn destroyGLFW(window: *glfw.Window) void {
+    glfw.terminate();
+    glfw.destroyWindow(window);
+    glfw.makeContextCurrent(null);
+}
+
+fn initGL() !void {
     if (!gl_procs.init(glfw.getProcAddress)) {
         std.debug.print("Failed to initialize gl procs\n", .{});
         return error.FailedToInitializeGlProcs;
     }
 
     gl.makeProcTableCurrent(&gl_procs);
-    defer gl.makeProcTableCurrent(null);
+}
 
-    // -- setting up viewport --
+fn initViewport() void {
     gl.Viewport(0, 0, WIDTH, HEIGHT);
+    gl.Enable(gl.DEPTH_TEST);
+}
 
-    // VAO must be bound before binding the VBO
-    // the purpose of VAO is to store the state of the vertex attributes
+const BufferHandles = struct {
+    vao: c_uint,
+    vbo: c_uint,
+};
+
+fn deleteBuffers(handles: BufferHandles) void {
+    var vao: c_uint = handles.vao;
+    var vbo: c_uint = handles.vbo;
+    gl.DeleteVertexArrays(1, (&vao)[0..1]);
+    gl.DeleteBuffers(1, (&vbo)[0..1]);
+}
+
+fn createBuffers(vertices: []const f32, element_size: c_int) BufferHandles {
     var VAO: c_uint = undefined;
     gl.GenVertexArrays(1, (&VAO)[0..1]);
     gl.BindVertexArray(VAO);
-    defer gl.DeleteVertexArrays(1, (&VAO)[0..1]);
 
-    // enable depth test for z-buffer
-    gl.Enable(gl.DEPTH_TEST);
+    var VBO: c_uint = undefined;
+    gl.GenBuffers(1, (&VBO)[0..1]);
+    gl.BindBuffer(gl.ARRAY_BUFFER, VBO);
+    gl.BufferData(gl.ARRAY_BUFFER, @intCast(@sizeOf(f32) * vertices.len), &vertices[0], gl.STATIC_DRAW);
+
+    gl.EnableVertexAttribArray(0);
+    gl.BindBuffer(gl.ARRAY_BUFFER, VBO);
+    gl.VertexAttribPointer(0, element_size, gl.FLOAT, gl.FALSE, element_size * @sizeOf(f32), 0);
+
+    return BufferHandles{ .vao = VAO, .vbo = VBO };
+}
+
+pub fn main() !void {
+    const window = try initGLFW();
+    defer destroyGLFW(window);
+
+    try initGL();
+    defer gl.makeProcTableCurrent(null);
+
+    initViewport();
 
     const shader_program = try shaders.init_shaders();
 
-    // define the triangles vertices
-    const vertices = [_]f32{
-      -1.0,-1.0,-1.0, // triangle 1 : begin
-    -1.0,-1.0, 1.0,
-    -1.0, 1.0, 1.0, // triangle 1 : end
-    1.0, 1.0,-1.0, // triangle 2 : begin
-    -1.0,-1.0,-1.0,
-    -1.0, 1.0,-1.0, // triangle 2 : end
-    1.0,-1.0, 1.0,
-    -1.0,-1.0,-1.0,
-    1.0,-1.0,-1.0,
-    1.0, 1.0,-1.0,
-    1.0,-1.0,-1.0,
-    -1.0,-1.0,-1.0,
-    -1.0,-1.0,-1.0,
-    -1.0, 1.0, 1.0,
-    -1.0, 1.0,-1.0,
-    1.0,-1.0, 1.0,
-    -1.0,-1.0, 1.0,
-    -1.0,-1.0,-1.0,
-    -1.0, 1.0, 1.0,
-    -1.0,-1.0, 1.0,
-    1.0,-1.0, 1.0,
-    1.0, 1.0, 1.0,
-    1.0,-1.0,-1.0,
-    1.0, 1.0,-1.0,
-    1.0,-1.0,-1.0,
-    1.0, 1.0, 1.0,
-    1.0,-1.0, 1.0,
-    1.0, 1.0, 1.0,
-    1.0, 1.0,-1.0,
-    -1.0, 1.0,-1.0,
-    1.0, 1.0, 1.0,
-    -1.0, 1.0,-1.0,
-    -1.0, 1.0, 1.0,
-    1.0, 1.0, 1.0,
-    -1.0, 1.0, 1.0,
-    1.0,-1.0, 1.0
+    const cube_vertices = [_]f32{
+        -1.0, -1.0, -1.0, // triangle 1 : begin
+        -1.0, -1.0, 1.0,
+        -1.0, 1.0, 1.0, // triangle 1 : end
+        1.0,  1.0,  -1.0, // triangle 2 : begin
+        -1.0, -1.0, -1.0,
+        -1.0, 1.0,  -1.0, // triangle 2 : end
+        1.0,  -1.0, 1.0,
+        -1.0, -1.0, -1.0,
+        1.0,  -1.0, -1.0,
+        1.0,  1.0,  -1.0,
+        1.0,  -1.0, -1.0,
+        -1.0, -1.0, -1.0,
+        -1.0, -1.0, -1.0,
+        -1.0, 1.0,  1.0,
+        -1.0, 1.0,  -1.0,
+        1.0,  -1.0, 1.0,
+        -1.0, -1.0, 1.0,
+        -1.0, -1.0, -1.0,
+        -1.0, 1.0,  1.0,
+        -1.0, -1.0, 1.0,
+        1.0,  -1.0, 1.0,
+        1.0,  1.0,  1.0,
+        1.0,  -1.0, -1.0,
+        1.0,  1.0,  -1.0,
+        1.0,  -1.0, -1.0,
+        1.0,  1.0,  1.0,
+        1.0,  -1.0, 1.0,
+        1.0,  1.0,  1.0,
+        1.0,  1.0,  -1.0,
+        -1.0, 1.0,  -1.0,
+        1.0,  1.0,  1.0,
+        -1.0, 1.0,  -1.0,
+        -1.0, 1.0,  1.0,
+        1.0,  1.0,  1.0,
+        -1.0, 1.0,  1.0,
+        1.0,  -1.0, 1.0,
     };
 
-    const triangle_vertices = [_]f32 {
-        -1.0,-1.0, 2.0, // triangle 1 : begin
-        1.0,-1.0, 2.0,
-        0.0, 1.0, 1.0, // triangle 1 : end
+    const triangle_vertices = [_]f32{
+        -1.0, -1.0, 2.0, // triangle 1 : begin
+        1.0,  -1.0, 2.0,
+        0.0, 1.0, 1.5, // triangle 1 : end
     };
 
-    var color_buffer_data: [12*3*3]f32 = undefined;
+    var uv_buffer_data = [_]f32{ 0.000059, 1.0 - 0.000004, 0.000103, 1.0 - 0.336048, 0.335973, 1.0 - 0.335903, 1.000023, 1.0 - 0.000013, 0.667979, 1.0 - 0.335851, 0.999958, 1.0 - 0.336064, 0.667979, 1.0 - 0.335851, 0.336024, 1.0 - 0.671877, 0.667969, 1.0 - 0.671889, 1.000023, 1.0 - 0.000013, 0.668104, 1.0 - 0.000013, 0.667979, 1.0 - 0.335851, 0.000059, 1.0 - 0.000004, 0.335973, 1.0 - 0.335903, 0.336098, 1.0 - 0.000071, 0.667979, 1.0 - 0.335851, 0.335973, 1.0 - 0.335903, 0.336024, 1.0 - 0.671877, 1.000004, 1.0 - 0.671847, 0.999958, 1.0 - 0.336064, 0.667979, 1.0 - 0.335851, 0.668104, 1.0 - 0.000013, 0.335973, 1.0 - 0.335903, 0.667979, 1.0 - 0.335851, 0.335973, 1.0 - 0.335903, 0.668104, 1.0 - 0.000013, 0.336098, 1.0 - 0.000071, 0.000103, 1.0 - 0.336048, 0.000004, 1.0 - 0.671870, 0.336024, 1.0 - 0.671877, 0.000103, 1.0 - 0.336048, 0.336024, 1.0 - 0.671877, 0.335973, 1.0 - 0.335903, 0.667969, 1.0 - 0.671889, 1.000004, 1.0 - 0.671847, 0.667979, 1.0 - 0.335851 };
 
-    for(0..12*3) |i| {
-        color_buffer_data[3 * i] = random.random().float(f32);
-        color_buffer_data[3 * i+1] = random.random().float(f32);
-        color_buffer_data[3 * i+2] = random.random().float(f32);
-    }
+    const cube_handles = createBuffers(&cube_vertices, 3);
+    defer deleteBuffers(cube_handles);
 
-    // -- allocate and bind vertex buffer in gpu memory --
-    var vertex_buffer: c_uint = undefined;
-    gl.GenBuffers(1, (&vertex_buffer)[0..1]);
-    gl.BindBuffer(gl.ARRAY_BUFFER, vertex_buffer);
-    gl.BufferData(gl.ARRAY_BUFFER, @sizeOf(f32) * vertices.len, &vertices, gl.STATIC_DRAW);
-    defer gl.DeleteBuffers(1, (&vertex_buffer)[0..1]);
+    // same thing but for the uv buffer
+    var uv_buffer: c_uint = undefined;
+    gl.GenBuffers(1, (&uv_buffer)[0..1]);
+    gl.BindBuffer(gl.ARRAY_BUFFER, uv_buffer);
+    gl.BufferData(gl.ARRAY_BUFFER, @sizeOf(f32) * uv_buffer_data.len, &uv_buffer_data, gl.STATIC_DRAW);
+    defer gl.DeleteBuffers(1, (&uv_buffer)[0..1]);
 
-    // same thing but for the color buffer
-    var color_buffer: c_uint = undefined;
-    gl.GenBuffers(1, (&color_buffer)[0..1]);
-    gl.BindBuffer(gl.ARRAY_BUFFER, color_buffer);
-    gl.BufferData(gl.ARRAY_BUFFER, @sizeOf(f32) * color_buffer_data.len, &color_buffer_data, gl.STATIC_DRAW);
-    defer gl.DeleteBuffers(1, (&color_buffer)[0..1]);
-
-    // after allocating the buffer, we need to enable the vertex attribute
-    gl.EnableVertexAttribArray(0);
-    gl.BindBuffer(gl.ARRAY_BUFFER, vertex_buffer);
-    gl.VertexAttribPointer(0, 3, gl.FLOAT, gl.FALSE, 3 * @sizeOf(f32), 0);
-    defer gl.DisableVertexAttribArray(0);
-
-    // then we need to enable the color attribute
+    // enable the uv attribute
     gl.EnableVertexAttribArray(1);
-    gl.BindBuffer(gl.ARRAY_BUFFER, color_buffer);
-    gl.VertexAttribPointer(1, 3, gl.FLOAT, gl.FALSE, 3 * @sizeOf(f32), 0);
+    gl.BindBuffer(gl.ARRAY_BUFFER, uv_buffer);
+    gl.VertexAttribPointer(1, 2, gl.FLOAT, gl.FALSE, 2 * @sizeOf(f32), 0);
     defer gl.DisableVertexAttribArray(1);
 
-    // we need to allocate a new vao and vbo for the triangle
-    var triangle_vao: c_uint = undefined;
-    gl.GenVertexArrays(1, (&triangle_vao)[0..1]);
-    gl.BindVertexArray(triangle_vao);
-    defer gl.DeleteVertexArrays(1, (&triangle_vao)[0..1]);
-
-    var triangle_vbo: c_uint = undefined;
-    gl.GenBuffers(1, (&triangle_vbo)[0..1]);
-    gl.BindBuffer(gl.ARRAY_BUFFER, triangle_vbo);
-    gl.BufferData(gl.ARRAY_BUFFER, @sizeOf(f32) * triangle_vertices.len, &triangle_vertices, gl.STATIC_DRAW);
-    defer gl.DeleteBuffers(1, (&triangle_vbo)[0..1]);
-
-    gl.EnableVertexAttribArray(0);
-    gl.BindBuffer(gl.ARRAY_BUFFER, triangle_vbo);
-    gl.VertexAttribPointer(0, 3, gl.FLOAT, gl.FALSE, 3 * @sizeOf(f32), 0);
-    defer gl.DisableVertexAttribArray(0);
-    // -------------------------------------------
+    const triangle_handles = createBuffers(&triangle_vertices, 3);
+    defer deleteBuffers(triangle_handles);
 
     // create transformation matrices
     const projection = za.perspective(45.0, 1, 0.1, 100.0);
@@ -179,6 +184,15 @@ pub fn main() !void {
     mvp.debugPrint();
 
     const mat_id = gl.GetUniformLocation(shader_program, "MVP");
+
+    // texture stuff
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+
+    const allocator = arena.allocator();
+
+    const texture_id = try bmp.loadBMP("test/nums.bmp", allocator);
+    const texture_id1 = gl.GetUniformLocation(shader_program, "texture1");
 
     while (!glfw.windowShouldClose(window)) {
         if (glfw.getKey(window, glfw.KeyEscape) == glfw.Press) {
@@ -194,14 +208,18 @@ pub fn main() !void {
         // use the shader program
         gl.UseProgram(shader_program);
 
+        gl.ActiveTexture(gl.TEXTURE0);
+        gl.BindTexture(gl.TEXTURE_2D, texture_id);
+        gl.Uniform1i(texture_id1, 0);
+
         // bring the cube to the current context (?) then draw
-        gl.BindVertexArray(VAO);
-        gl.BindBuffer(gl.ARRAY_BUFFER, vertex_buffer);
-        gl.DrawArrays(gl.TRIANGLES, 0, vertices.len / 3);
+        gl.BindVertexArray(cube_handles.vao);
+        gl.BindBuffer(gl.ARRAY_BUFFER, cube_handles.vbo);
+        gl.DrawArrays(gl.TRIANGLES, 0, cube_vertices.len / 3);
 
         // then draw the triangle
-        gl.BindVertexArray(triangle_vao);
-        gl.BindBuffer(gl.ARRAY_BUFFER, triangle_vbo);
+        gl.BindVertexArray(triangle_handles.vao);
+        gl.BindBuffer(gl.ARRAY_BUFFER, triangle_handles.vbo);
         gl.DrawArrays(gl.TRIANGLES, 0, triangle_vertices.len / 3);
 
         glfw.swapBuffers(window);
