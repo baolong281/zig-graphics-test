@@ -3,10 +3,12 @@ const gl = @import("gl");
 
 const vertex_shader_source =
     \\#version 330 core
-    \\layout (location = 0) in vec3 aPos;
+    \\layout (location = 0) in vec3 vertex_position;
+    \\uniform mat4 MVP;
     \\void main()
     \\{
-    \\    gl_Position = vec4(aPos.x, aPos.y, aPos.z, 1.0);
+    \\     gl_Position = MVP * vec4(vertex_position.x, vertex_position.y, vertex_position.z, 1.0);
+    // \\    gl_Position = vec4(vertex_position, 1.0);
     \\}
 ;
 
@@ -15,11 +17,11 @@ const fragment_shader_source =
     \\out vec4 FragColor;
     \\void main()
     \\{
-    \\    FragColor = vec4(1.0f, 0.5f, 0.2f, 1.0f);
+    \\    FragColor = vec4(0.2f, 0.5f, 0.2f, 1.0f);
     \\}
 ;
 
-const ShaderError = error {
+const ShaderError = error{
     VertexShaderFailedToCompile,
     FragmentShaderFailedToCompile,
 };
@@ -63,5 +65,5 @@ pub fn init_shaders() !c_uint {
 
     gl.LinkProgram(shader_program);
 
-    return  shader_program;
+    return shader_program;
 }

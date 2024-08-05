@@ -1,8 +1,12 @@
 const std = @import("std");
 const gl = @import("gl");
 const glfw = @import("glfw");
-const math = std.math;
+const sqrt = std.math.sqrt;
 const shaders = @import("shaders.zig");
+const za = @import("zalgebra");
+
+const Vec3 = za.Vec3;
+const Mat4 = za.Mat4;
 
 const glfw_log = std.log.scoped(.glfw);
 const gl_log = std.log.scoped(.gl);
@@ -12,6 +16,9 @@ var gl_procs: gl.ProcTable = undefined;
 fn logGLFWError(error_code: c_int, description: [*:0]const u8) callconv(.C) void {
     glfw_log.err("{}: {s}\n", .{ error_code, description });
 }
+
+const WIDTH = 800;
+const HEIGHT = 800;
 
 pub fn main() !void {
 
@@ -34,7 +41,7 @@ pub fn main() !void {
 
     std.debug.print("GLFW Init Succeeded.\n", .{});
 
-    const window: *glfw.Window = try glfw.createWindow(800, 800, "Hello World", null, null);
+    const window: *glfw.Window = try glfw.createWindow(WIDTH, HEIGHT, "Hello World", null, null);
     defer glfw.destroyWindow(window);
 
     glfw.makeContextCurrent(window);
@@ -50,23 +57,21 @@ pub fn main() !void {
     defer gl.makeProcTableCurrent(null);
 
     // -- setting up viewport --
-    gl.Viewport(0, 0, 800, 800);
+    gl.Viewport(0, 0, WIDTH, HEIGHT);
 
     // define the triangles vertices
     const vertices = [_]f32{
-        -0.5, -0.5 * math.sqrt(3) / 3.0, 0.0,
-        0.5,  -0.5 * math.sqrt(3) / 3.0, 0.0,
-        0.0,  0.5 + 0.5 * math.sqrt(3) / 3.0, 0.0,
-        -0.5 / 2.0, 0.5 * math.sqrt(3) / 3.0, 0.0,
-        0.5 / 2.0, 0.5 * math.sqrt(3) / 3.0, 0.0,
-        0.0, -0.5 * math.sqrt(3) / 3.0, 0.0,
-    };
+        -1.0, -1.0, 0.0,
+        1.0,  -1.0, 0.0,
+        0.0,  1.0,  0.0,
 
-    const indices = [_]u32
-    {
-        0, 3, 5,
-        3, 4, 2,
-        5, 4, 1,
+        -1.0, -1.0, 1.0,
+        1.0,  -1.0, 1.0,
+        0.0,  1.0,  1.0,
+
+        -1.0, -1.0, -1.0,
+        1.0,  -1.0, -1.0,
+        0.0,  1.0,  -1.0,
     };
 
     const shader_program = try shaders.init_shaders();
@@ -86,13 +91,6 @@ pub fn main() !void {
     gl.BufferData(gl.ARRAY_BUFFER, @sizeOf(f32) * vertices.len, &vertices, gl.STATIC_DRAW);
     defer gl.DeleteBuffers(1, (&VBO)[0..1]);
 
-    // allocate and bind index buffer in gpu memory
-    var EBO: c_uint = undefined;
-    gl.GenBuffers(1, (&EBO)[0..1]);
-    gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, EBO);
-    gl.BufferData(gl.ELEMENT_ARRAY_BUFFER, @sizeOf(u32) * indices.len, &indices, gl.STATIC_DRAW);
-    defer gl.DeleteBuffers(1, (&EBO)[0..1]);
-
     // this specifies the layout of the data in the VBO
     gl.VertexAttribPointer(0, 3, gl.FLOAT, gl.FALSE, 3 * @sizeOf(f32), 0);
 
@@ -103,7 +101,15 @@ pub fn main() !void {
     gl.BindBuffer(gl.ARRAY_BUFFER, 0);
     gl.BindVertexArray(0);
 
-    gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, 0);
+    // create transformation matrices
+    const projection = za.perspective(45.0, 800.0 / 600.0, 0.1, 100.0);
+    const view = za.lookAt(Vec3.new(3.0, 2.0, -2.0), Vec3.zero(), Vec3.up());
+    const model = Mat4.fromTranslate(Vec3.new(0.2, 0.5, 0.0));
+
+    const mvp = Mat4.mul(projection, view.mul(model));
+    mvp.debugPrint();
+
+    const mat_id = gl.GetUniformLocation(shader_program, "MVP");
 
     while (!glfw.windowShouldClose(window)) {
         if (glfw.getKey(window, glfw.KeyEscape) == glfw.Press) {
@@ -113,14 +119,16 @@ pub fn main() !void {
         // clear the color buffer
         gl.ClearColor(0.2, 0.3, 0.3, 1.0);
         gl.Clear(gl.COLOR_BUFFER_BIT);
+
+        gl.UniformMatrix4fv(mat_id, 1, gl.FALSE, &mvp.data[0][0]);
+
         // use the shader program
         gl.UseProgram(shader_program);
         // bind the vertex array
         gl.BindVertexArray(VAO);
         // draw the triangle
-        gl.DrawElements(gl.TRIANGLES, 9, gl.UNSIGNED_INT, 0);
+        gl.DrawArrays(gl.TRIANGLES, 0, vertices.len / 3);
         glfw.swapBuffers(window);
-
 
         glfw.pollEvents();
     }
