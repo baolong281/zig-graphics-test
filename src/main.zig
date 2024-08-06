@@ -5,6 +5,7 @@ const sqrt = std.math.sqrt;
 const shaders = @import("shaders.zig");
 const bmp = @import("bmp.zig");
 const za = @import("zalgebra");
+const camera = @import("camera.zig");
 var random = std.rand.DefaultPrng.init(142857);
 
 const Vec3 = za.Vec3;
@@ -19,8 +20,8 @@ fn logGLFWError(error_code: c_int, description: [*:0]const u8) callconv(.C) void
     glfw_log.err("{}: {s}\n", .{ error_code, description });
 }
 
-const WIDTH = 800;
-const HEIGHT = 800;
+pub const WIDTH = 800;
+pub const HEIGHT = 800;
 
 fn initGLFW() !*c_long {
     // -- initializing glfw window --
@@ -67,6 +68,7 @@ fn initGL() !void {
 fn initViewport() void {
     gl.Viewport(0, 0, WIDTH, HEIGHT);
     gl.Enable(gl.DEPTH_TEST);
+    gl.Enable(gl.CULL_FACE);
 }
 
 const BufferHandles = struct {
@@ -81,19 +83,23 @@ fn deleteBuffers(handles: BufferHandles) void {
     gl.DeleteBuffers(1, (&vbo)[0..1]);
 }
 
-fn createBuffers(vertices: []const f32, element_size: c_int) BufferHandles {
+fn createBuffers(vertices: []const f32, element_size: c_int, index: c_uint) BufferHandles {
+    // don't create a VAO if we are creating buffers for uv's
+    // idk why
     var VAO: c_uint = undefined;
-    gl.GenVertexArrays(1, (&VAO)[0..1]);
-    gl.BindVertexArray(VAO);
+    if (index == 0) {
+        gl.GenVertexArrays(1, (&VAO)[0..1]);
+        gl.BindVertexArray(VAO);
+    }
 
     var VBO: c_uint = undefined;
     gl.GenBuffers(1, (&VBO)[0..1]);
     gl.BindBuffer(gl.ARRAY_BUFFER, VBO);
     gl.BufferData(gl.ARRAY_BUFFER, @intCast(@sizeOf(f32) * vertices.len), &vertices[0], gl.STATIC_DRAW);
 
-    gl.EnableVertexAttribArray(0);
+    gl.EnableVertexAttribArray(index);
     gl.BindBuffer(gl.ARRAY_BUFFER, VBO);
-    gl.VertexAttribPointer(0, element_size, gl.FLOAT, gl.FALSE, element_size * @sizeOf(f32), 0);
+    gl.VertexAttribPointer(index, element_size, gl.FLOAT, gl.FALSE, element_size * @sizeOf(f32), 0);
 
     return BufferHandles{ .vao = VAO, .vbo = VBO };
 }
@@ -156,32 +162,14 @@ pub fn main() !void {
 
     var uv_buffer_data = [_]f32{ 0.000059, 1.0 - 0.000004, 0.000103, 1.0 - 0.336048, 0.335973, 1.0 - 0.335903, 1.000023, 1.0 - 0.000013, 0.667979, 1.0 - 0.335851, 0.999958, 1.0 - 0.336064, 0.667979, 1.0 - 0.335851, 0.336024, 1.0 - 0.671877, 0.667969, 1.0 - 0.671889, 1.000023, 1.0 - 0.000013, 0.668104, 1.0 - 0.000013, 0.667979, 1.0 - 0.335851, 0.000059, 1.0 - 0.000004, 0.335973, 1.0 - 0.335903, 0.336098, 1.0 - 0.000071, 0.667979, 1.0 - 0.335851, 0.335973, 1.0 - 0.335903, 0.336024, 1.0 - 0.671877, 1.000004, 1.0 - 0.671847, 0.999958, 1.0 - 0.336064, 0.667979, 1.0 - 0.335851, 0.668104, 1.0 - 0.000013, 0.335973, 1.0 - 0.335903, 0.667979, 1.0 - 0.335851, 0.335973, 1.0 - 0.335903, 0.668104, 1.0 - 0.000013, 0.336098, 1.0 - 0.000071, 0.000103, 1.0 - 0.336048, 0.000004, 1.0 - 0.671870, 0.336024, 1.0 - 0.671877, 0.000103, 1.0 - 0.336048, 0.336024, 1.0 - 0.671877, 0.335973, 1.0 - 0.335903, 0.667969, 1.0 - 0.671889, 1.000004, 1.0 - 0.671847, 0.667979, 1.0 - 0.335851 };
 
-    const cube_handles = createBuffers(&cube_vertices, 3);
+    const cube_handles = createBuffers(&cube_vertices, 3, 0);
     defer deleteBuffers(cube_handles);
 
-    // same thing but for the uv buffer
-    var uv_buffer: c_uint = undefined;
-    gl.GenBuffers(1, (&uv_buffer)[0..1]);
-    gl.BindBuffer(gl.ARRAY_BUFFER, uv_buffer);
-    gl.BufferData(gl.ARRAY_BUFFER, @sizeOf(f32) * uv_buffer_data.len, &uv_buffer_data, gl.STATIC_DRAW);
-    defer gl.DeleteBuffers(1, (&uv_buffer)[0..1]);
+    const uv_handles = createBuffers(&uv_buffer_data, 2, 1);
+    defer deleteBuffers(uv_handles);
 
-    // enable the uv attribute
-    gl.EnableVertexAttribArray(1);
-    gl.BindBuffer(gl.ARRAY_BUFFER, uv_buffer);
-    gl.VertexAttribPointer(1, 2, gl.FLOAT, gl.FALSE, 2 * @sizeOf(f32), 0);
-    defer gl.DisableVertexAttribArray(1);
-
-    const triangle_handles = createBuffers(&triangle_vertices, 3);
+    const triangle_handles = createBuffers(&triangle_vertices, 3, 0);
     defer deleteBuffers(triangle_handles);
-
-    // create transformation matrices
-    const projection = za.perspective(45.0, 1, 0.1, 100.0);
-    const view = za.lookAt(Vec3.new(5.0, 3.0, 5.0), Vec3.zero(), Vec3.up());
-    const model = Mat4.fromTranslate(Vec3.new(0.2, 0.5, 0.0));
-
-    const mvp = Mat4.mul(projection, view.mul(model));
-    mvp.debugPrint();
 
     const mat_id = gl.GetUniformLocation(shader_program, "MVP");
 
@@ -194,6 +182,8 @@ pub fn main() !void {
     const texture_id = try bmp.loadBMP("test/nums.bmp", allocator);
     const texture_id1 = gl.GetUniformLocation(shader_program, "texture1");
 
+    var controls = camera.Controls.new(window);
+
     while (!glfw.windowShouldClose(window)) {
         if (glfw.getKey(window, glfw.KeyEscape) == glfw.Press) {
             glfw.setWindowShouldClose(window, true);
@@ -202,6 +192,9 @@ pub fn main() !void {
         // clear the color buffer
         gl.ClearColor(0.1333, 0.19215, 0.29019, 1.0);
         gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+        controls.updateMatricesFromInput();
+        const mvp = controls.getProjectionMatrix().mul(controls.getViewMatrix());
 
         gl.UniformMatrix4fv(mat_id, 1, gl.FALSE, &mvp.data[0][0]);
 

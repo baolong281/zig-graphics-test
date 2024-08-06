@@ -55,8 +55,13 @@ pub fn loadBMP(file_path: []const u8, allocator: Allocator) !c_uint {
     gl.BindTexture(gl.TEXTURE_2D, texture_id);
 
     gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, @intCast(width), @intCast(height), 0, gl.RGBA, gl.UNSIGNED_BYTE, &pixels[0]);
-    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+
     gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    gl.GenerateMipmap(gl.TEXTURE_2D);
+
+    // gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    // gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
 
     std.debug.print("bmp loaded hopefully\nwidth: {}\nheight: {}\nimage_size: {}\ndata_pos: {}\n", .{ width, height, image_size, data_pos });
 
@@ -70,6 +75,5 @@ test "loadBMP" {
     const allocator = arena.allocator();
 
     const file_path = "test/uvtemplate.bmp";
-    const width = try loadBMP(file_path, allocator);
-    std.log.info("width: {}", .{width});
+    _ = try loadBMP(file_path, allocator);
 }
