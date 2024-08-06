@@ -96,7 +96,7 @@ pub const Controls = struct {
     pub fn new(window: *glfw.Window) Controls {
         return Controls{
             .window = window,
-            .position = Vec3.new(4, 4, 5),
+            .position = Vec3.new(0, 0, 3),
             .horizontal_angle = 3.14,
             .vertical_angle = 0.0,
             .fov = 70.0,

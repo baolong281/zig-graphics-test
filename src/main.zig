@@ -6,8 +6,10 @@ const shaders = @import("shaders.zig");
 const bmp = @import("bmp.zig");
 const za = @import("zalgebra");
 const camera = @import("camera.zig");
+const obj = @import("obj.zig");
 var random = std.rand.DefaultPrng.init(142857);
 
+const Vec2 = za.Vec2;
 const Vec3 = za.Vec3;
 const Mat4 = za.Mat4;
 
@@ -45,6 +47,8 @@ fn initGLFW() !*c_long {
     const window: *glfw.Window = try glfw.createWindow(WIDTH, HEIGHT, "Hello World", null, null);
     glfw.makeContextCurrent(window);
 
+    glfw.setInputMode(window, glfw.Cursor, glfw.CursorDisabled);
+
     std.debug.print("GLFW Init Succeeded.\n", .{});
 
     return window;
@@ -68,7 +72,8 @@ fn initGL() !void {
 fn initViewport() void {
     gl.Viewport(0, 0, WIDTH, HEIGHT);
     gl.Enable(gl.DEPTH_TEST);
-    gl.Enable(gl.CULL_FACE);
+    // gl.Enable(gl.CULL_FACE);
+    // gl.PolygonMode(gl.FRONT_AND_BACK, gl.LINE);
 }
 
 const BufferHandles = struct {
@@ -83,7 +88,30 @@ fn deleteBuffers(handles: BufferHandles) void {
     gl.DeleteBuffers(1, (&vbo)[0..1]);
 }
 
-fn createBuffers(vertices: []const f32, element_size: c_int, index: c_uint) BufferHandles {
+fn createBuffers(comptime T: type, vertices: *std.ArrayList(T), index: c_uint) BufferHandles {
+    var element_size: c_uint = undefined;
+
+    comptime {
+        if (T != Vec2 and T != Vec3) {
+            @compileError("T must be a struct (Vec2 or Vec3)");
+        }
+    }
+
+    if (T == Vec2) {
+        element_size = 2;
+    } else if (T == Vec3) {
+        element_size = 3;
+    }
+
+    const element_size_int: c_int = @intCast(element_size);
+    // Check if the data is tightly packed
+    const expected_size = @sizeOf(T) * vertices.items.len;
+    const actual_size = @intFromPtr(&vertices.items[vertices.items.len - 1]) + @sizeOf(T) - @intFromPtr(&vertices.items[0]);
+    std.debug.print("expected size: {}, actual size: {}\n", .{ expected_size, actual_size });
+    if (actual_size != expected_size) {
+        @panic("Data is not tightly packed");
+    }
+
     // don't create a VAO if we are creating buffers for uv's
     // idk why
     var VAO: c_uint = undefined;
@@ -92,14 +120,16 @@ fn createBuffers(vertices: []const f32, element_size: c_int, index: c_uint) Buff
         gl.BindVertexArray(VAO);
     }
 
+    const element_size_usize: usize = @intCast(element_size);
+
     var VBO: c_uint = undefined;
     gl.GenBuffers(1, (&VBO)[0..1]);
     gl.BindBuffer(gl.ARRAY_BUFFER, VBO);
-    gl.BufferData(gl.ARRAY_BUFFER, @intCast(@sizeOf(f32) * vertices.len), &vertices[0], gl.STATIC_DRAW);
+    gl.BufferData(gl.ARRAY_BUFFER, @intCast(@sizeOf(f32) * vertices.items.len * element_size_usize), &vertices.items[0], gl.STATIC_DRAW);
 
     gl.EnableVertexAttribArray(index);
     gl.BindBuffer(gl.ARRAY_BUFFER, VBO);
-    gl.VertexAttribPointer(index, element_size, gl.FLOAT, gl.FALSE, element_size * @sizeOf(f32), 0);
+    gl.VertexAttribPointer(index, element_size_int, gl.FLOAT, gl.FALSE, element_size_int * @sizeOf(f32), 0);
 
     return BufferHandles{ .vao = VAO, .vbo = VBO };
 }
@@ -115,69 +145,38 @@ pub fn main() !void {
 
     const shader_program = try shaders.init_shaders();
 
-    const cube_vertices = [_]f32{
-        -1.0, -1.0, -1.0, // triangle 1 : begin
-        -1.0, -1.0, 1.0,
-        -1.0, 1.0, 1.0, // triangle 1 : end
-        1.0,  1.0,  -1.0, // triangle 2 : begin
-        -1.0, -1.0, -1.0,
-        -1.0, 1.0,  -1.0, // triangle 2 : end
-        1.0,  -1.0, 1.0,
-        -1.0, -1.0, -1.0,
-        1.0,  -1.0, -1.0,
-        1.0,  1.0,  -1.0,
-        1.0,  -1.0, -1.0,
-        -1.0, -1.0, -1.0,
-        -1.0, -1.0, -1.0,
-        -1.0, 1.0,  1.0,
-        -1.0, 1.0,  -1.0,
-        1.0,  -1.0, 1.0,
-        -1.0, -1.0, 1.0,
-        -1.0, -1.0, -1.0,
-        -1.0, 1.0,  1.0,
-        -1.0, -1.0, 1.0,
-        1.0,  -1.0, 1.0,
-        1.0,  1.0,  1.0,
-        1.0,  -1.0, -1.0,
-        1.0,  1.0,  -1.0,
-        1.0,  -1.0, -1.0,
-        1.0,  1.0,  1.0,
-        1.0,  -1.0, 1.0,
-        1.0,  1.0,  1.0,
-        1.0,  1.0,  -1.0,
-        -1.0, 1.0,  -1.0,
-        1.0,  1.0,  1.0,
-        -1.0, 1.0,  -1.0,
-        -1.0, 1.0,  1.0,
-        1.0,  1.0,  1.0,
-        -1.0, 1.0,  1.0,
-        1.0,  -1.0, 1.0,
-    };
-
-    const triangle_vertices = [_]f32{
-        -1.0, -1.0, 2.0, // triangle 1 : begin
-        1.0,  -1.0, 2.0,
-        0.0, 1.0, 1.5, // triangle 1 : end
-    };
-
-    var uv_buffer_data = [_]f32{ 0.000059, 1.0 - 0.000004, 0.000103, 1.0 - 0.336048, 0.335973, 1.0 - 0.335903, 1.000023, 1.0 - 0.000013, 0.667979, 1.0 - 0.335851, 0.999958, 1.0 - 0.336064, 0.667979, 1.0 - 0.335851, 0.336024, 1.0 - 0.671877, 0.667969, 1.0 - 0.671889, 1.000023, 1.0 - 0.000013, 0.668104, 1.0 - 0.000013, 0.667979, 1.0 - 0.335851, 0.000059, 1.0 - 0.000004, 0.335973, 1.0 - 0.335903, 0.336098, 1.0 - 0.000071, 0.667979, 1.0 - 0.335851, 0.335973, 1.0 - 0.335903, 0.336024, 1.0 - 0.671877, 1.000004, 1.0 - 0.671847, 0.999958, 1.0 - 0.336064, 0.667979, 1.0 - 0.335851, 0.668104, 1.0 - 0.000013, 0.335973, 1.0 - 0.335903, 0.667979, 1.0 - 0.335851, 0.335973, 1.0 - 0.335903, 0.668104, 1.0 - 0.000013, 0.336098, 1.0 - 0.000071, 0.000103, 1.0 - 0.336048, 0.000004, 1.0 - 0.671870, 0.336024, 1.0 - 0.671877, 0.000103, 1.0 - 0.336048, 0.336024, 1.0 - 0.671877, 0.335973, 1.0 - 0.335903, 0.667969, 1.0 - 0.671889, 1.000004, 1.0 - 0.671847, 0.667979, 1.0 - 0.335851 };
-
-    const cube_handles = createBuffers(&cube_vertices, 3, 0);
-    defer deleteBuffers(cube_handles);
-
-    const uv_handles = createBuffers(&uv_buffer_data, 2, 1);
-    defer deleteBuffers(uv_handles);
-
-    const triangle_handles = createBuffers(&triangle_vertices, 3, 0);
-    defer deleteBuffers(triangle_handles);
-
-    const mat_id = gl.GetUniformLocation(shader_program, "MVP");
-
-    // texture stuff
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
 
     const allocator = arena.allocator();
+
+    var cube_vertices = std.ArrayList(Vec3).init(allocator);
+    var uv_buffer_data = std.ArrayList(Vec2).init(allocator);
+    var normals = std.ArrayList(Vec3).init(allocator);
+    defer cube_vertices.deinit();
+    defer uv_buffer_data.deinit();
+    defer normals.deinit();
+
+    obj.loadObj("./test/cube.obj", &cube_vertices, &uv_buffer_data, &normals, allocator) catch |err| {
+        std.debug.print("Error: {}\n", .{err});
+        return err;
+    };
+
+    for (cube_vertices.items) |vertex| {
+        std.debug.print("vertex: {any}\n", .{vertex});
+    }
+
+    for (uv_buffer_data.items) |uv| {
+        std.debug.print("uv: {any}\n", .{uv});
+    }
+
+    const cube_handles = createBuffers(Vec3, &cube_vertices, 0);
+    defer deleteBuffers(cube_handles);
+
+    const uv_handles = createBuffers(Vec2, &uv_buffer_data, 1);
+    defer deleteBuffers(uv_handles);
+
+    const mat_id = gl.GetUniformLocation(shader_program, "MVP");
 
     const texture_id = try bmp.loadBMP("test/nums.bmp", allocator);
     const texture_id1 = gl.GetUniformLocation(shader_program, "texture1");
@@ -208,12 +207,9 @@ pub fn main() !void {
         // bring the cube to the current context (?) then draw
         gl.BindVertexArray(cube_handles.vao);
         gl.BindBuffer(gl.ARRAY_BUFFER, cube_handles.vbo);
-        gl.DrawArrays(gl.TRIANGLES, 0, cube_vertices.len / 3);
 
-        // then draw the triangle
-        gl.BindVertexArray(triangle_handles.vao);
-        gl.BindBuffer(gl.ARRAY_BUFFER, triangle_handles.vbo);
-        gl.DrawArrays(gl.TRIANGLES, 0, triangle_vertices.len / 3);
+        const num_triangles: c_int = @intCast(cube_vertices.items.len);
+        gl.DrawArrays(gl.TRIANGLES, 0, num_triangles);
 
         glfw.swapBuffers(window);
 
