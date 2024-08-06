@@ -72,7 +72,7 @@ fn initGL() !void {
 fn initViewport() void {
     gl.Viewport(0, 0, WIDTH, HEIGHT);
     gl.Enable(gl.DEPTH_TEST);
-    // gl.Enable(gl.CULL_FACE);
+    gl.Enable(gl.CULL_FACE);
     // gl.PolygonMode(gl.FRONT_AND_BACK, gl.LINE);
 }
 
@@ -88,7 +88,7 @@ fn deleteBuffers(handles: BufferHandles) void {
     gl.DeleteBuffers(1, (&vbo)[0..1]);
 }
 
-fn createBuffers(comptime T: type, vertices: *std.ArrayList(T), index: c_uint) BufferHandles {
+fn createBuffers(allocator: std.mem.Allocator, comptime T: type, vertices: *std.ArrayList(T), index: c_uint) !BufferHandles {
     var element_size: c_uint = undefined;
 
     comptime {
@@ -104,12 +104,16 @@ fn createBuffers(comptime T: type, vertices: *std.ArrayList(T), index: c_uint) B
     }
 
     const element_size_int: c_int = @intCast(element_size);
-    // Check if the data is tightly packed
-    const expected_size = @sizeOf(T) * vertices.items.len;
-    const actual_size = @intFromPtr(&vertices.items[vertices.items.len - 1]) + @sizeOf(T) - @intFromPtr(&vertices.items[0]);
-    std.debug.print("expected size: {}, actual size: {}\n", .{ expected_size, actual_size });
-    if (actual_size != expected_size) {
-        @panic("Data is not tightly packed");
+
+    var buffer: []f32 = try allocator.alloc(f32, vertices.items.len * element_size);
+    defer allocator.free(buffer);
+    for (vertices.items, 0..) |vec, i| {
+        buffer[i * element_size] = vec.x();
+        buffer[i * element_size + 1] = vec.y();
+
+        if (T == Vec3) {
+            buffer[i * element_size + 2] = vec.z();
+        }
     }
 
     // don't create a VAO if we are creating buffers for uv's
@@ -120,16 +124,14 @@ fn createBuffers(comptime T: type, vertices: *std.ArrayList(T), index: c_uint) B
         gl.BindVertexArray(VAO);
     }
 
-    const element_size_usize: usize = @intCast(element_size);
-
     var VBO: c_uint = undefined;
     gl.GenBuffers(1, (&VBO)[0..1]);
     gl.BindBuffer(gl.ARRAY_BUFFER, VBO);
-    gl.BufferData(gl.ARRAY_BUFFER, @intCast(@sizeOf(f32) * vertices.items.len * element_size_usize), &vertices.items[0], gl.STATIC_DRAW);
+    gl.BufferData(gl.ARRAY_BUFFER, @intCast(@sizeOf(f32) * buffer.len), &buffer[0], gl.STATIC_DRAW);
 
     gl.EnableVertexAttribArray(index);
     gl.BindBuffer(gl.ARRAY_BUFFER, VBO);
-    gl.VertexAttribPointer(index, element_size_int, gl.FLOAT, gl.FALSE, element_size_int * @sizeOf(f32), 0);
+    gl.VertexAttribPointer(index, element_size_int, gl.FLOAT, gl.FALSE, 0, 0);
 
     return BufferHandles{ .vao = VAO, .vbo = VBO };
 }
@@ -140,11 +142,9 @@ pub fn main() !void {
 
     try initGL();
     defer gl.makeProcTableCurrent(null);
-
     initViewport();
 
     const shader_program = try shaders.init_shaders();
-
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
 
@@ -162,18 +162,10 @@ pub fn main() !void {
         return err;
     };
 
-    for (cube_vertices.items) |vertex| {
-        std.debug.print("vertex: {any}\n", .{vertex});
-    }
-
-    for (uv_buffer_data.items) |uv| {
-        std.debug.print("uv: {any}\n", .{uv});
-    }
-
-    const cube_handles = createBuffers(Vec3, &cube_vertices, 0);
+    const cube_handles = try createBuffers(allocator, Vec3, &cube_vertices, 0);
     defer deleteBuffers(cube_handles);
 
-    const uv_handles = createBuffers(Vec2, &uv_buffer_data, 1);
+    const uv_handles = try createBuffers(allocator, Vec2, &uv_buffer_data, 1);
     defer deleteBuffers(uv_handles);
 
     const mat_id = gl.GetUniformLocation(shader_program, "MVP");
