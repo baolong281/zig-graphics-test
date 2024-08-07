@@ -1,13 +1,11 @@
 const std = @import("std");
 const gl = @import("gl");
 const glfw = @import("glfw");
-const sqrt = std.math.sqrt;
 const shaders = @import("shaders.zig");
 const bmp = @import("bmp.zig");
 const za = @import("zalgebra");
 const camera = @import("camera.zig");
 const obj = @import("obj.zig");
-var random = std.rand.DefaultPrng.init(142857);
 
 const Vec2 = za.Vec2;
 const Vec3 = za.Vec3;
@@ -22,8 +20,8 @@ fn logGLFWError(error_code: c_int, description: [*:0]const u8) callconv(.C) void
     glfw_log.err("{}: {s}\n", .{ error_code, description });
 }
 
-pub const WIDTH = 800;
-pub const HEIGHT = 800;
+pub const WIDTH = 1000;
+pub const HEIGHT = 1000;
 
 fn initGLFW() !*c_long {
     // -- initializing glfw window --
@@ -49,8 +47,6 @@ fn initGLFW() !*c_long {
 
     glfw.setInputMode(window, glfw.Cursor, glfw.CursorDisabled);
 
-    std.debug.print("GLFW Init Succeeded.\n", .{});
-
     return window;
 }
 
@@ -72,7 +68,7 @@ fn initGL() !void {
 fn initViewport() void {
     gl.Viewport(0, 0, WIDTH, HEIGHT);
     gl.Enable(gl.DEPTH_TEST);
-    // gl.Enable(gl.CULL_FACE);
+    gl.Enable(gl.CULL_FACE);
     // gl.PolygonMode(gl.FRONT_AND_BACK, gl.LINE);
 }
 
@@ -105,6 +101,7 @@ fn createBuffers(allocator: std.mem.Allocator, comptime T: type, vertices: *std.
 
     var buffer: []f32 = try allocator.alloc(f32, vertices.items.len * element_size);
     defer allocator.free(buffer);
+
     for (vertices.items, 0..) |vec, i| {
         buffer[i * element_size] = vec.x();
         buffer[i * element_size + 1] = vec.y();
@@ -114,6 +111,7 @@ fn createBuffers(allocator: std.mem.Allocator, comptime T: type, vertices: *std.
         }
     }
 
+    std.debug.print("vertices size {any}\n", .{vertices.items.len});
     std.debug.print("buffer length {any}\n", .{buffer.len});
 
     // don't create a VAO if we are creating buffers for uv's
@@ -132,7 +130,7 @@ fn createBuffers(allocator: std.mem.Allocator, comptime T: type, vertices: *std.
     return BufferHandles{ .vao = VAO, .vbo = VBO };
 }
 
-fn enableBuffer(handles: BufferHandles, element_size: c_int, index: c_uint) void {
+fn enableBuffer(handles: BufferHandles, index: c_uint, element_size: c_int) void {
     gl.EnableVertexAttribArray(index);
     gl.BindBuffer(gl.ARRAY_BUFFER, handles.vbo);
     gl.VertexAttribPointer(index, element_size, gl.FLOAT, gl.FALSE, 0, 0);
@@ -156,9 +154,13 @@ pub fn main() !void {
         path = "test/bunny_norm.obj";
     }
 
-    std.debug.print("path: {s}\n", .{path});
+    std.debug.print("file path: {any}\n", .{path});
 
-    const window = try initGLFW();
+    const window = initGLFW() catch |err| {
+        std.debug.print("Error intializing GLFW: {any}\n", .{err});
+        return err;
+    };
+
     defer destroyGLFW(window);
 
     try initGL();
@@ -166,6 +168,9 @@ pub fn main() !void {
     initViewport();
 
     const shader_program = try shaders.init_shaders();
+
+    const texture_id = try bmp.loadBMP("test/baked.bmp", allocator);
+    const texture_id1 = gl.GetUniformLocation(shader_program, "texture1");
 
     var cube_vertices = std.ArrayList(Vec3).init(allocator);
     var uv_buffer_data = std.ArrayList(Vec2).init(allocator);
@@ -179,33 +184,36 @@ pub fn main() !void {
         return err;
     };
 
-    var normal_handles: ?BufferHandles = null;
-    if (normals.items.len != 0) {
-        normal_handles = try createBuffers(allocator, Vec3, &normals, 2);
-        defer deleteBuffers(normal_handles.?);
-    } else {
-        std.debug.print("No normals found in obj file, ignoring\n", .{});
-    }
-
     const cube_handles = try createBuffers(allocator, Vec3, &cube_vertices, 0);
     defer deleteBuffers(cube_handles);
 
     var uv_handles: ?BufferHandles = null;
     if (uv_buffer_data.items.len != 0) {
         uv_handles = try createBuffers(allocator, Vec2, &uv_buffer_data, 1);
-        defer deleteBuffers(uv_handles.?);
     } else {
         std.debug.print("No UVs found in obj file, ignoring\n", .{});
     }
+
+    defer if (uv_handles) |handles| {
+        deleteBuffers(handles);
+    };
+
+    var normal_handles: ?BufferHandles = null;
+    if (normals.items.len != 0) {
+        normal_handles = try createBuffers(allocator, Vec3, &normals, 2);
+    } else {
+        std.debug.print("No normals found in obj file, ignoring\n", .{});
+    }
+
+    defer if (normal_handles) |handles| {
+        deleteBuffers(handles);
+    };
 
     const matrix_id = gl.GetUniformLocation(shader_program, "MVP");
     const view_matrix_id = gl.GetUniformLocation(shader_program, "V");
     const model_matrix_id = gl.GetUniformLocation(shader_program, "M");
 
     const light_id = gl.GetUniformLocation(shader_program, "LightPosition_worldspace");
-
-    const texture_id = try bmp.loadBMP("test/baked.bmp", allocator);
-    const texture_id1 = gl.GetUniformLocation(shader_program, "texture1");
 
     var controls = camera.Controls.new(window);
 
@@ -238,14 +246,12 @@ pub fn main() !void {
         gl.BindTexture(gl.TEXTURE_2D, texture_id);
         gl.Uniform1i(texture_id1, 0);
 
-        enableBuffer(cube_handles, 3, 0);
-
+        enableBuffer(cube_handles, 0, 3);
         if (uv_handles != null) {
-            enableBuffer(uv_handles.?, 2, 1);
+            enableBuffer(uv_handles.?, 1, 2);
         }
-
         if (normal_handles != null) {
-            enableBuffer(normal_handles.?, 3, 2);
+            enableBuffer(normal_handles.?, 2, 3);
         }
 
         const num_triangles: c_int = @intCast(cube_vertices.items.len);

@@ -101,10 +101,10 @@ pub fn loadObj(
 
         if (uv_enabled and i < uv_indices.items.len) {
             const uv_index = uv_indices.items[i];
-            var uv: Vec2 = temp_uvs.items[uv_index - 1];
+            const uv: Vec2 = temp_uvs.items[uv_index - 1];
             // Flip the V coordinate
-            const new_vec = Vec2.new(uv.x(), 1.0 - uv.y());
-            try out_uvs.append(new_vec);
+            // const new_vec = Vec2.new(uv.x(), 1.0 - uv.y());
+            try out_uvs.append(uv);
         }
 
         if (normals_enabled and i < normal_indices.items.len) {
