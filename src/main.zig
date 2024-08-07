@@ -103,8 +103,6 @@ fn createBuffers(allocator: std.mem.Allocator, comptime T: type, vertices: *std.
         element_size = 3;
     }
 
-    const element_size_int: c_int = @intCast(element_size);
-
     var buffer: []f32 = try allocator.alloc(f32, vertices.items.len * element_size);
     defer allocator.free(buffer);
     for (vertices.items, 0..) |vec, i| {
@@ -115,6 +113,8 @@ fn createBuffers(allocator: std.mem.Allocator, comptime T: type, vertices: *std.
             buffer[i * element_size + 2] = vec.z();
         }
     }
+
+    std.debug.print("buffer length {any}\n", .{buffer.len});
 
     // don't create a VAO if we are creating buffers for uv's
     // idk why
@@ -129,11 +129,13 @@ fn createBuffers(allocator: std.mem.Allocator, comptime T: type, vertices: *std.
     gl.BindBuffer(gl.ARRAY_BUFFER, VBO);
     gl.BufferData(gl.ARRAY_BUFFER, @intCast(@sizeOf(f32) * buffer.len), &buffer[0], gl.STATIC_DRAW);
 
-    gl.EnableVertexAttribArray(index);
-    gl.BindBuffer(gl.ARRAY_BUFFER, VBO);
-    gl.VertexAttribPointer(index, element_size_int, gl.FLOAT, gl.FALSE, 0, 0);
-
     return BufferHandles{ .vao = VAO, .vbo = VBO };
+}
+
+fn enableBuffer(handles: BufferHandles, element_size: c_int, index: c_uint) void {
+    gl.EnableVertexAttribArray(index);
+    gl.BindBuffer(gl.ARRAY_BUFFER, handles.vbo);
+    gl.VertexAttribPointer(index, element_size, gl.FLOAT, gl.FALSE, 0, 0);
 }
 
 pub fn main() !void {
@@ -157,18 +159,35 @@ pub fn main() !void {
     defer uv_buffer_data.deinit();
     defer normals.deinit();
 
-    obj.loadObj("./test/cube.obj", &cube_vertices, &uv_buffer_data, &normals, allocator) catch |err| {
+    obj.loadObj("./test/bunny_norm.obj", &cube_vertices, &uv_buffer_data, &normals, allocator) catch |err| {
         std.debug.print("Error: {}\n", .{err});
         return err;
     };
 
+    var normal_handles: ?BufferHandles = null;
+    if (normals.items.len != 0) {
+        normal_handles = try createBuffers(allocator, Vec3, &normals, 2);
+        defer deleteBuffers(normal_handles.?);
+    } else {
+        std.debug.print("No normals found in obj file, ignoring\n", .{});
+    }
+
     const cube_handles = try createBuffers(allocator, Vec3, &cube_vertices, 0);
     defer deleteBuffers(cube_handles);
 
-    const uv_handles = try createBuffers(allocator, Vec2, &uv_buffer_data, 1);
-    defer deleteBuffers(uv_handles);
+    var uv_handles: ?BufferHandles = null;
+    if (uv_buffer_data.items.len != 0) {
+        uv_handles = try createBuffers(allocator, Vec2, &uv_buffer_data, 1);
+        defer deleteBuffers(uv_handles.?);
+    } else {
+        std.debug.print("No UVs found in obj file, ignoring\n", .{});
+    }
 
-    const mat_id = gl.GetUniformLocation(shader_program, "MVP");
+    const matrix_id = gl.GetUniformLocation(shader_program, "MVP");
+    const view_matrix_id = gl.GetUniformLocation(shader_program, "V");
+    const model_matrix_id = gl.GetUniformLocation(shader_program, "M");
+
+    const light_id = gl.GetUniformLocation(shader_program, "LightPosition_worldspace");
 
     const texture_id = try bmp.loadBMP("test/nums.bmp", allocator);
     const texture_id1 = gl.GetUniformLocation(shader_program, "texture1");
@@ -184,17 +203,36 @@ pub fn main() !void {
         gl.ClearColor(0.1333, 0.19215, 0.29019, 1.0);
         gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-        controls.updateMatricesFromInput();
-        const mvp = controls.getProjectionMatrix().mul(controls.getViewMatrix());
-
-        gl.UniformMatrix4fv(mat_id, 1, gl.FALSE, &mvp.data[0][0]);
-
         // use the shader program
         gl.UseProgram(shader_program);
+
+        controls.updateMatricesFromInput();
+        const projection = controls.getProjectionMatrix();
+        const view = controls.getViewMatrix();
+        const model = Mat4.identity();
+        const transform = Mat4.fromScale(Vec3.new(20, 20, 20));
+        const mvp = projection.mul(view).mul(transform);
+
+        gl.UniformMatrix4fv(matrix_id, 1, gl.FALSE, &mvp.data[0][0]);
+        gl.UniformMatrix4fv(view_matrix_id, 1, gl.FALSE, &view.data[0][0]);
+        gl.UniformMatrix4fv(model_matrix_id, 1, gl.FALSE, &model.data[0][0]);
+
+        const light_pos = Vec3.new(-4, 4, 4);
+        gl.Uniform3f(light_id, light_pos.x(), light_pos.y(), light_pos.z());
 
         gl.ActiveTexture(gl.TEXTURE0);
         gl.BindTexture(gl.TEXTURE_2D, texture_id);
         gl.Uniform1i(texture_id1, 0);
+
+        enableBuffer(cube_handles, 3, 0);
+
+        if (uv_handles != null) {
+            enableBuffer(uv_handles.?, 2, 1);
+        }
+
+        if (normal_handles != null) {
+            enableBuffer(normal_handles.?, 3, 2);
+        }
 
         // bring the cube to the current context (?) then draw
         gl.BindVertexArray(cube_handles.vao);
@@ -203,8 +241,11 @@ pub fn main() !void {
         const num_triangles: c_int = @intCast(cube_vertices.items.len);
         gl.DrawArrays(gl.TRIANGLES, 0, num_triangles);
 
-        glfw.swapBuffers(window);
+        gl.DisableVertexAttribArray(0);
+        gl.DisableVertexAttribArray(1);
+        gl.DisableVertexAttribArray(2);
 
+        glfw.swapBuffers(window);
         glfw.pollEvents();
     }
 }
