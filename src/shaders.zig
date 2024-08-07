@@ -6,6 +6,7 @@ const vertex_shader_source =
     \\layout (location = 0) in vec3 vertex_position;
     \\layout (location = 1) in vec2 vertexUV;
     \\layout (location = 2) in vec3 vertexNormal;
+    \\
     \\out vec2 UV;
     \\out vec3 Position_worldspace;
     \\out vec3 Normal_cameraspace;
@@ -20,14 +21,15 @@ const vertex_shader_source =
     \\{
     \\    gl_Position = MVP * vec4(vertex_position, 1.0);
     \\    Position_worldspace = (M * vec4(vertex_position, 1.0)).xyz;
-    \\      
+    \\    
+    \\    // get the position of the vertex in camera space then calculate the direction from the eye to the vertex
     \\    vec3 vertexPosition_cameraspace = ( V * M * vec4(vertex_position, 1.0)).xyz;
     \\    EyeDirection_cameraspace = vec3(0,0,0) - vertexPosition_cameraspace;
-    \\
+    \\    
     \\    vec3 LightPosition_cameraspace = ( V * vec4(LightPosition_worldspace,1)).xyz;
     \\    LightDirection_cameraspace = LightPosition_cameraspace + EyeDirection_cameraspace;
     \\
-    \\    Normal_cameraspace = (V * M * vec4(vertexNormal,0)).xyz; // Only correct if ModelMatrix does not scale the model ! Use its inverse transpose if not.
+    \\    Normal_cameraspace = (V * transpose(inverse(M)) * vec4(vertexNormal,0)).xyz; // Only correct if ModelMatrix does not scale the model ! Use its inverse transpose if not.
     \\    
     \\    UV = vertexUV;
     \\}
@@ -53,7 +55,7 @@ const fragment_shader_source =
     \\
     \\    vec3 MaterialDiffuseColor = texture(texture1, UV).rgb;
     \\    vec3 MaterialAmbientColor = vec3(0.1,0.1,0.1) * MaterialDiffuseColor;
-    \\    vec3 MaterialSpecularColor = vec3(0.3,0.3,0.3);
+    \\    vec3 MaterialSpecularColor = vec3(0.2,0.2,0.2);
     \\     
     \\    float distance = length( LightPosition_worldspace - Position_worldspace );
     \\
@@ -67,7 +69,9 @@ const fragment_shader_source =
     \\    vec3 R = reflect(-l,n);
     \\    float cosAlpha = clamp( dot( E,R ), 0,1 );
     \\
-    \\    color = MaterialAmbientColor + MaterialDiffuseColor * LightColor * LightPower * cosTheta / (distance*distance) + MaterialSpecularColor * LightColor * LightPower * pow(cosAlpha,5) / (distance*distance);
+    \\    color = MaterialAmbientColor + 
+    \\    MaterialDiffuseColor * LightColor * LightPower * cosTheta / (distance*distance) +
+    \\    MaterialSpecularColor * LightColor * LightPower * pow(cosAlpha,5) / (distance*distance);
     \\}
 ;
 

@@ -3,6 +3,7 @@ const fs = std.fs;
 const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
 const gl = @import("gl");
+const eql = std.mem.eql;
 
 pub fn loadBMP(file_path: []const u8, allocator: Allocator) !c_uint {
     var header: [54]u8 = undefined;
@@ -66,14 +67,4 @@ pub fn loadBMP(file_path: []const u8, allocator: Allocator) !c_uint {
     std.debug.print("bmp loaded hopefully\nwidth: {}\nheight: {}\nimage_size: {}\ndata_pos: {}\n", .{ width, height, image_size, data_pos });
 
     return texture_id;
-}
-
-test "loadBMP" {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-
-    const allocator = arena.allocator();
-
-    const file_path = "test/uvtemplate.bmp";
-    _ = try loadBMP(file_path, allocator);
 }

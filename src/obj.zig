@@ -44,7 +44,6 @@ pub fn loadObj(
 
     var line_header: [128]u8 = undefined;
     while (try in_stream.readUntilDelimiterOrEof(&line_header, '\n')) |line| {
-        std.debug.print("currently reading line: {s}\n", .{line});
         var it = std.mem.tokenizeAny(u8, line, " ");
 
         const header = it.next();
@@ -100,13 +99,15 @@ pub fn loadObj(
         const vertex: Vec3 = temp_vertices.items[vertex_index - 1];
         try out_vertices.append(vertex);
 
-        if (i < uv_indices.items.len) {
+        if (uv_enabled and i < uv_indices.items.len) {
             const uv_index = uv_indices.items[i];
-            const uv: Vec2 = temp_uvs.items[uv_index - 1];
-            try out_uvs.append(uv);
+            var uv: Vec2 = temp_uvs.items[uv_index - 1];
+            // Flip the V coordinate
+            const new_vec = Vec2.new(uv.x(), 1.0 - uv.y());
+            try out_uvs.append(new_vec);
         }
 
-        if (i < normal_indices.items.len) {
+        if (normals_enabled and i < normal_indices.items.len) {
             const normal_index = normal_indices.items[i];
             const normal: Vec3 = temp_normals.items[normal_index - 1];
             try out_normals.append(normal);

@@ -85,7 +85,7 @@ pub const Controls = struct {
     }
 
     pub fn getProjectionMatrix(self: *Controls) za.Mat4 {
-        return za.perspective(self.fov, @as(f32, WIDTH / HEIGHT), 0.1, 100.0);
+        return za.perspective(self.fov, @as(f32, WIDTH / HEIGHT), 0.1, 400.0);
     }
 
     pub fn getViewMatrix(self: *Controls) za.Mat4 {
@@ -100,7 +100,7 @@ pub const Controls = struct {
             .horizontal_angle = 3.14,
             .vertical_angle = 0.0,
             .fov = 70.0,
-            .speed = 3.0,
+            .speed = 5.0,
             .mouse_speed = 0.035,
             .last_time = glfw.getTime(),
             .up = Vec3.new(0, 1, 0),

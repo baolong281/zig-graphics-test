@@ -72,7 +72,7 @@ fn initGL() !void {
 fn initViewport() void {
     gl.Viewport(0, 0, WIDTH, HEIGHT);
     gl.Enable(gl.DEPTH_TEST);
-    gl.Enable(gl.CULL_FACE);
+    // gl.Enable(gl.CULL_FACE);
     // gl.PolygonMode(gl.FRONT_AND_BACK, gl.LINE);
 }
 
@@ -139,6 +139,25 @@ fn enableBuffer(handles: BufferHandles, element_size: c_int, index: c_uint) void
 }
 
 pub fn main() !void {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+
+    const allocator = arena.allocator();
+
+    var args = try std.process.argsWithAllocator(allocator);
+    defer args.deinit();
+
+    _ = args.next().?;
+    var path: [:0]const u8 = undefined;
+
+    if (args.next()) |arg| {
+        path = arg;
+    } else {
+        path = "test/bunny_norm.obj";
+    }
+
+    std.debug.print("path: {s}\n", .{path});
+
     const window = try initGLFW();
     defer destroyGLFW(window);
 
@@ -147,10 +166,6 @@ pub fn main() !void {
     initViewport();
 
     const shader_program = try shaders.init_shaders();
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-
-    const allocator = arena.allocator();
 
     var cube_vertices = std.ArrayList(Vec3).init(allocator);
     var uv_buffer_data = std.ArrayList(Vec2).init(allocator);
@@ -159,7 +174,7 @@ pub fn main() !void {
     defer uv_buffer_data.deinit();
     defer normals.deinit();
 
-    obj.loadObj("./test/bunny_norm.obj", &cube_vertices, &uv_buffer_data, &normals, allocator) catch |err| {
+    obj.loadObj(path, &cube_vertices, &uv_buffer_data, &normals, allocator) catch |err| {
         std.debug.print("Error: {}\n", .{err});
         return err;
     };
@@ -189,7 +204,7 @@ pub fn main() !void {
 
     const light_id = gl.GetUniformLocation(shader_program, "LightPosition_worldspace");
 
-    const texture_id = try bmp.loadBMP("test/nums.bmp", allocator);
+    const texture_id = try bmp.loadBMP("test/baked.bmp", allocator);
     const texture_id1 = gl.GetUniformLocation(shader_program, "texture1");
 
     var controls = camera.Controls.new(window);
@@ -209,15 +224,14 @@ pub fn main() !void {
         controls.updateMatricesFromInput();
         const projection = controls.getProjectionMatrix();
         const view = controls.getViewMatrix();
-        const model = Mat4.identity();
-        const transform = Mat4.fromScale(Vec3.new(20, 20, 20));
-        const mvp = projection.mul(view).mul(transform);
+        const model = Mat4.fromScale(Vec3.new(1, 1, 1));
+        const mvp = projection.mul(view).mul(model);
 
         gl.UniformMatrix4fv(matrix_id, 1, gl.FALSE, &mvp.data[0][0]);
         gl.UniformMatrix4fv(view_matrix_id, 1, gl.FALSE, &view.data[0][0]);
         gl.UniformMatrix4fv(model_matrix_id, 1, gl.FALSE, &model.data[0][0]);
 
-        const light_pos = Vec3.new(-4, 4, 4);
+        const light_pos = Vec3.new(5, 5, 5);
         gl.Uniform3f(light_id, light_pos.x(), light_pos.y(), light_pos.z());
 
         gl.ActiveTexture(gl.TEXTURE0);
@@ -233,10 +247,6 @@ pub fn main() !void {
         if (normal_handles != null) {
             enableBuffer(normal_handles.?, 3, 2);
         }
-
-        // bring the cube to the current context (?) then draw
-        gl.BindVertexArray(cube_handles.vao);
-        gl.BindBuffer(gl.ARRAY_BUFFER, cube_handles.vbo);
 
         const num_triangles: c_int = @intCast(cube_vertices.items.len);
         gl.DrawArrays(gl.TRIANGLES, 0, num_triangles);
