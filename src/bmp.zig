@@ -1,98 +1,27 @@
-// const std = @import("std");
-// const fs = std.fs;
-// const builtin = @import("builtin");
-// const Allocator = std.mem.Allocator;
-// const gl = @import("gl");
-// const eql = std.mem.eql;
-
-// pub fn loadBMP(file_path: []const u8, allocator: Allocator) !c_uint {
-//     var header: [54]u8 = undefined;
-//     var data_pos: usize = 0;
-//     var image_size: usize = 0;
-//     var width: usize = 0;
-//     var height: usize = 0;
-//     const file = try fs.cwd().openFile(file_path, .{});
-//     defer file.close();
-
-//     const bytes_read = try file.readAll(&header);
-//     if (bytes_read != 54) {
-//         std.log.err("Invalid BMP header", .{});
-//         return error.InvalidFileFormat;
-//     }
-
-//     if (header[0] != 'B' or header[1] != 'M') {
-//         std.log.err("Invalid BMP header", .{});
-//         return error.InvalidFileFormat;
-//     }
-
-//     data_pos = std.mem.readInt(u32, header[10..14], builtin.cpu.arch.endian());
-//     image_size = std.mem.readInt(u32, header[34..38], builtin.cpu.arch.endian());
-//     width = std.mem.readInt(u32, header[18..22], builtin.cpu.arch.endian());
-//     height = std.mem.readInt(u32, header[22..26], builtin.cpu.arch.endian());
-
-//     const bits_per_pixel = std.mem.readInt(u16, header[28..30], builtin.cpu.arch.endian());
-//     if (bits_per_pixel != 24) {
-//         std.log.err("Only 24-bit BMPs are supported", .{});
-//         return error.UnsupportedFormat;
-//     }
-
-//     const row_size = ((bits_per_pixel * width + 31) / 32) * 4;
-//     const padding = row_size - (width * 3);
-
-//     if (image_size == 0) {
-//         image_size = row_size * height;
-//     }
-
-//     if (data_pos == 0) {
-//         data_pos = 54;
-//     }
-
-//     const pixels = try allocator.alloc(u8, width * height * 3);
-//     defer allocator.free(pixels);
-
-//     try file.seekTo(data_pos);
-
-//     var y: usize = 0;
-//     while (y < height) : (y += 1) {
-//         const row_start = (height - 1 - y) * width * 3;
-//         _ = try file.read(pixels[row_start .. row_start + width * 3]);
-
-//         // Swap R and B channels
-//         var x: usize = 0;
-//         while (x < width * 3) : (x += 3) {
-//             const temp = pixels[row_start + x];
-//             pixels[row_start + x] = pixels[row_start + x + 2];
-//             pixels[row_start + x + 2] = temp;
-//         }
-
-//         if (padding > 0) {
-//             const padding_i64: i64 = @intCast(padding);
-//             try file.seekBy(padding_i64);
-//         }
-//     }
-
-//     var texture_id: c_uint = undefined;
-//     gl.GenTextures(1, (&texture_id)[0..1]);
-//     gl.BindTexture(gl.TEXTURE_2D, texture_id);
-//     gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGB, @intCast(width), @intCast(height), 0, gl.RGB, gl.UNSIGNED_BYTE, &pixels[0]);
-//     gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-//     gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-//     gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-// gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
-//     gl.GenerateMipmap(gl.TEXTURE_2D);
-
-//     std.debug.print("BMP loaded: width: {}, height: {}, image_size: {}, data_pos: {}\n", .{ width, height, image_size, data_pos });
-
-//     return texture_id;
-// }
-
 const std = @import("std");
 const fs = std.fs;
 const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
 const gl = @import("gl");
 const eql = std.mem.eql;
-pub fn loadBMP(file_path: []const u8, allocator: Allocator) !c_uint {
+
+pub fn loadTexture(file_path: []const u8, allocator: std.mem.Allocator) !c_uint {
+    var it = std.mem.tokenizeAny(u8, file_path, ".");
+
+    _ = it.next();
+
+    const end = it.next().?;
+
+    if (eql(u8, end, "bmp")) {
+        return loadBMP(file_path, allocator);
+    } else if (eql(u8, end, "dds") or eql(u8, end, "DDS")) {
+        return loadDDS(file_path, allocator);
+    } else {
+        return error.UnsupportedFormat;
+    }
+}
+
+fn loadBMP(file_path: []const u8, allocator: Allocator) !c_uint {
     var header: [54]u8 = undefined;
     var data_pos: usize = 0;
     var image_size: usize = 0;
@@ -148,7 +77,7 @@ const FOURCC_DXT1: u32 = 0x31545844; // Equivalent to "DXT1" in ASCII
 const FOURCC_DXT3: u32 = 0x33545844; // Equivalent to "DXT3" in ASCII
 const FOURCC_DXT5: u32 = 0x35545844; // Equivalent to "DXT5" in ASCII
 
-pub fn loadDDS(file_path: []const u8, allocator: Allocator) !c_uint {
+fn loadDDS(file_path: []const u8, allocator: Allocator) !c_uint {
     const file = try fs.cwd().openFile(file_path, .{});
     defer file.close();
 

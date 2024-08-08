@@ -24,7 +24,6 @@ pub const WIDTH = 1000;
 pub const HEIGHT = 1000;
 
 fn initGLFW() !*c_long {
-    // -- initializing glfw window --
     _ = glfw.setErrorCallback(logGLFWError);
 
     var major: i32 = 0;
@@ -151,10 +150,20 @@ pub fn main() !void {
     if (args.next()) |arg| {
         path = arg;
     } else {
-        path = "test/bunny_norm.obj";
+        path = "test/bunny.obj";
+    }
+
+    var texture_path: [:0]const u8 = undefined;
+    var textures_enabled = false;
+    if (args.next()) |arg| {
+        texture_path = arg;
+        textures_enabled = true;
+    } else {
+        texture_path = "test/uvmap.DDS";
     }
 
     std.debug.print("file path: {any}\n", .{path});
+    std.debug.print("texture path: {any}\n", .{texture_path});
 
     const window = initGLFW() catch |err| {
         std.debug.print("Error intializing GLFW: {any}\n", .{err});
@@ -169,8 +178,8 @@ pub fn main() !void {
 
     const shader_program = try shaders.init_shaders();
 
-    const texture_id = try bmp.loadBMP("test/baked.bmp", allocator);
-    const texture_id1 = gl.GetUniformLocation(shader_program, "texture1");
+    const texture_id = try bmp.loadTexture(texture_path, allocator);
+    const texture_location = gl.GetUniformLocation(shader_program, "texture1");
 
     var cube_vertices = std.ArrayList(Vec3).init(allocator);
     var uv_buffer_data = std.ArrayList(Vec2).init(allocator);
@@ -239,12 +248,12 @@ pub fn main() !void {
         gl.UniformMatrix4fv(view_matrix_id, 1, gl.FALSE, &view.data[0][0]);
         gl.UniformMatrix4fv(model_matrix_id, 1, gl.FALSE, &model.data[0][0]);
 
-        const light_pos = Vec3.new(5, 5, 5);
+        const light_pos = Vec3.new(0, 3, -8);
         gl.Uniform3f(light_id, light_pos.x(), light_pos.y(), light_pos.z());
 
         gl.ActiveTexture(gl.TEXTURE0);
         gl.BindTexture(gl.TEXTURE_2D, texture_id);
-        gl.Uniform1i(texture_id1, 0);
+        gl.Uniform1i(texture_location, 0);
 
         enableBuffer(cube_handles, 0, 3);
         if (uv_handles != null) {
