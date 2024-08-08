@@ -166,8 +166,8 @@ pub fn main() !void {
         texture_path = "test/uvmap.DDS";
     }
 
-    std.debug.print("file path: {any}\n", .{path});
-    std.debug.print("texture path: {any}\n", .{texture_path});
+    std.debug.print("file path: {s}\n", .{path});
+    std.debug.print("texture path: {s}\n", .{texture_path});
 
     const window = initGLFW() catch |err| {
         std.debug.print("Error intializing GLFW: {any}\n", .{err});
