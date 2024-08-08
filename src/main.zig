@@ -83,6 +83,7 @@ fn deleteBuffers(handles: BufferHandles) void {
     gl.DeleteBuffers(1, (&vbo)[0..1]);
 }
 
+// create vao and vbo's for the index
 fn createBuffers(allocator: std.mem.Allocator, comptime T: type, vertices: *std.ArrayList(T), index: c_uint) !BufferHandles {
     var element_size: c_uint = undefined;
 
@@ -98,6 +99,7 @@ fn createBuffers(allocator: std.mem.Allocator, comptime T: type, vertices: *std.
         element_size = 3;
     }
 
+    // if we just pass the array of vectors directly then it won't work
     var buffer: []f32 = try allocator.alloc(f32, vertices.items.len * element_size);
     defer allocator.free(buffer);
 
@@ -129,6 +131,7 @@ fn createBuffers(allocator: std.mem.Allocator, comptime T: type, vertices: *std.
     return BufferHandles{ .vao = VAO, .vbo = VBO };
 }
 
+// enable the buffer at the index
 fn enableBuffer(handles: BufferHandles, index: c_uint, element_size: c_int) void {
     gl.EnableVertexAttribArray(index);
     gl.BindBuffer(gl.ARRAY_BUFFER, handles.vbo);
@@ -141,6 +144,7 @@ pub fn main() !void {
 
     const allocator = arena.allocator();
 
+    // parse args
     var args = try std.process.argsWithAllocator(allocator);
     defer args.deinit();
 
@@ -181,19 +185,19 @@ pub fn main() !void {
     const texture_id = try bmp.loadTexture(texture_path, allocator);
     const texture_location = gl.GetUniformLocation(shader_program, "texture1");
 
-    var cube_vertices = std.ArrayList(Vec3).init(allocator);
+    var object_vertices = std.ArrayList(Vec3).init(allocator);
     var uv_buffer_data = std.ArrayList(Vec2).init(allocator);
     var normals = std.ArrayList(Vec3).init(allocator);
-    defer cube_vertices.deinit();
+    defer object_vertices.deinit();
     defer uv_buffer_data.deinit();
     defer normals.deinit();
 
-    obj.loadObj(path, &cube_vertices, &uv_buffer_data, &normals, allocator) catch |err| {
+    obj.loadObj(path, &object_vertices, &uv_buffer_data, &normals, allocator) catch |err| {
         std.debug.print("Error: {}\n", .{err});
         return err;
     };
 
-    const cube_handles = try createBuffers(allocator, Vec3, &cube_vertices, 0);
+    const cube_handles = try createBuffers(allocator, Vec3, &object_vertices, 0);
     defer deleteBuffers(cube_handles);
 
     var uv_handles: ?BufferHandles = null;
@@ -225,6 +229,7 @@ pub fn main() !void {
     const light_id = gl.GetUniformLocation(shader_program, "LightPosition_worldspace");
 
     var controls = camera.Controls.new(window);
+    gl.ClearColor(0.75, 0.75, 0.75, 1.0);
 
     while (!glfw.windowShouldClose(window)) {
         if (glfw.getKey(window, glfw.KeyEscape) == glfw.Press) {
@@ -232,12 +237,12 @@ pub fn main() !void {
         }
 
         // clear the color buffer
-        gl.ClearColor(0.1333, 0.19215, 0.29019, 1.0);
         gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
         // use the shader program
         gl.UseProgram(shader_program);
 
+        // update the matrices
         controls.updateMatricesFromInput();
         const projection = controls.getProjectionMatrix();
         const view = controls.getViewMatrix();
@@ -251,10 +256,12 @@ pub fn main() !void {
         const light_pos = Vec3.new(0, 3, -8);
         gl.Uniform3f(light_id, light_pos.x(), light_pos.y(), light_pos.z());
 
+        // activate textures
         gl.ActiveTexture(gl.TEXTURE0);
         gl.BindTexture(gl.TEXTURE_2D, texture_id);
         gl.Uniform1i(texture_location, 0);
 
+        // enabled the buffers if they exist
         enableBuffer(cube_handles, 0, 3);
         if (uv_handles != null) {
             enableBuffer(uv_handles.?, 1, 2);
@@ -263,7 +270,8 @@ pub fn main() !void {
             enableBuffer(normal_handles.?, 2, 3);
         }
 
-        const num_triangles: c_int = @intCast(cube_vertices.items.len);
+        // draw the object
+        const num_triangles: c_int = @intCast(object_vertices.items.len);
         gl.DrawArrays(gl.TRIANGLES, 0, num_triangles);
 
         gl.DisableVertexAttribArray(0);

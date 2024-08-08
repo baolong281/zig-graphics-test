@@ -12,6 +12,9 @@ const LineType = enum {
     other,
 };
 
+// load object files into the arrays
+// only supports v, vt, vn, and f
+// very bad
 pub fn loadObj(
     path: []const u8,
     out_vertices: *std.ArrayList(za.Vec3),
@@ -39,13 +42,17 @@ pub fn loadObj(
     defer temp_uvs.deinit();
     defer temp_normals.deinit();
 
+    // obj file can have normals and uvs disabled
     var normals_enabled = false;
     var uv_enabled = false;
 
     var line_header: [128]u8 = undefined;
+    // keep reading lines until EOF, max line size is 128 bytes for now
     while (try in_stream.readUntilDelimiterOrEof(&line_header, '\n')) |line| {
+        // split the line into tokens
         var it = std.mem.tokenizeAny(u8, line, " ");
 
+        // read the first value / header
         const header = it.next();
 
         if (header == null) {
@@ -71,11 +78,14 @@ pub fn loadObj(
                 try temp_uvs.append(uv);
             },
             .face => {
+                // for each face, read 3 vertices
                 for (0..3) |_| {
                     const face = it.next().?;
                     var face_it = std.mem.tokenizeAny(u8, face, "/");
                     const vertex_index = parseIntTrimmed(face_it.next().?) catch unreachable;
                     try vertex_indices.append(vertex_index);
+                    // if uvs and normals are enabled, read them
+                    // uv's come first before normals
                     if (uv_enabled) {
                         const uv_index_str = face_it.next().?;
                         const uv_index = parseIntTrimmed(uv_index_str) catch unreachable;
@@ -94,8 +104,10 @@ pub fn loadObj(
         }
     }
 
+    // for each face, push the vertices, uvs, and normals into the output arrays in the correct orderkj
     for (0..vertex_indices.items.len) |i| {
         const vertex_index = vertex_indices.items[i];
+        // indices start from 1
         const vertex: Vec3 = temp_vertices.items[vertex_index - 1];
         try out_vertices.append(vertex);
 
@@ -132,6 +144,7 @@ fn parseIntTrimmed(value: []const u8) !u32 {
     return std.fmt.parseInt(u32, std.mem.trim(u8, value, &std.ascii.whitespace), 10);
 }
 
+// check if the header is a valid obj header
 fn parseLineType(header: []const u8) LineType {
     if (eql(u8, header, "v")) {
         return .vertex;

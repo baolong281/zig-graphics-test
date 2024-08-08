@@ -40,6 +40,12 @@ pub const Controls = struct {
         const delta_y: f32 = half_height - @as(f32, @floatFromInt(y_pos_int));
         self.vertical_angle += self.mouse_speed * delta_time_f32 * delta_y;
 
+        if (self.vertical_angle > 1.5) {
+            self.vertical_angle = 1.5;
+        } else if (self.vertical_angle < -1.5) {
+            self.vertical_angle = -1.5;
+        }
+
         // convert those angles to cartesian coordinates
         // r is just 1 here
         self.direction = Vec3.new(
@@ -76,11 +82,11 @@ pub const Controls = struct {
         }
 
         if (glfw.getKey(self.window, glfw.KeySpace) == glfw.Press) {
-            self.position = self.position.add(self.up.scale(self.speed * delta_time_f32));
+            self.position = self.position.add(Vec3.new(0, 1, 0).scale(self.speed * delta_time_f32));
         }
 
         if (glfw.getKey(self.window, glfw.KeyLeftControl) == glfw.Press) {
-            self.position = self.position.sub(self.up.scale(self.speed * delta_time_f32));
+            self.position = self.position.sub(Vec3.new(0, 1, 0).scale(self.speed * delta_time_f32));
         }
     }
 

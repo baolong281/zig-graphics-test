@@ -4,8 +4,11 @@ const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
 const gl = @import("gl");
 const eql = std.mem.eql;
+const mem = std.mem;
 
+// load bmp or dds files into the texture buffer
 pub fn loadTexture(file_path: []const u8, allocator: std.mem.Allocator) !c_uint {
+    // get the file extension
     var it = std.mem.tokenizeAny(u8, file_path, ".");
 
     _ = it.next();
@@ -38,6 +41,8 @@ fn loadBMP(file_path: []const u8, allocator: Allocator) !c_uint {
         std.log.err("Invalid BMP header", .{});
         return error.InvalidFileFormat;
     }
+
+    // read values from the header
     data_pos = std.mem.readInt(u32, header[10..14], builtin.cpu.arch.endian());
     image_size = std.mem.readInt(u32, header[34..38], builtin.cpu.arch.endian());
     width = std.mem.readInt(u32, header[18..22], builtin.cpu.arch.endian());
@@ -50,6 +55,7 @@ fn loadBMP(file_path: []const u8, allocator: Allocator) !c_uint {
         std.debug.print("BMP: data_pos == 0, guessing data_pos\n", .{});
         data_pos = 54;
     }
+    // allocate then read the image data starting from the position specified in the header
     const pixels = try allocator.alloc(u8, image_size);
     defer allocator.free(pixels);
     file.seekTo(data_pos) catch return error.SeekError;
@@ -58,6 +64,8 @@ fn loadBMP(file_path: []const u8, allocator: Allocator) !c_uint {
         std.log.err("Invalid BMP file", .{});
         return error.InvalidFileFormat;
     }
+
+    // send and bind the buffer to opengl
     var texture_id: c_uint = undefined;
     gl.GenTextures(1, (&texture_id)[0..1]);
     gl.BindTexture(gl.TEXTURE_2D, texture_id);
@@ -65,13 +73,9 @@ fn loadBMP(file_path: []const u8, allocator: Allocator) !c_uint {
     gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
     gl.GenerateMipmap(gl.TEXTURE_2D);
-    // gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    // gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
     std.debug.print("bmp loaded hopefully\nwidth: {}\nheight: {}\nimage_size: {}\ndata_pos: {}\n", .{ width, height, image_size, data_pos });
     return texture_id;
 }
-
-const mem = std.mem;
 
 const FOURCC_DXT1: u32 = 0x31545844; // Equivalent to "DXT1" in ASCII
 const FOURCC_DXT3: u32 = 0x33545844; // Equivalent to "DXT3" in ASCII
@@ -102,8 +106,10 @@ fn loadDDS(file_path: []const u8, allocator: Allocator) !c_uint {
 
     _ = try file.readAll(buffer);
 
+    // values taken from
+    // https://api.dart.dev/stable/1.24.3/dart-web_gl/CompressedTextureS3TC/COMPRESSED_RGBA_S3TC_DXT1_EXT-constant.html
     const format: u32 = switch (four_cc) {
-        FOURCC_DXT1 => 0x83F1,
+        FOURCC_DXT1 => 0x83F1, //
         FOURCC_DXT3 => 0x83F2,
         FOURCC_DXT5 => 0x83F3,
         else => return error.UnsupportedFormat,

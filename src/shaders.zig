@@ -89,6 +89,8 @@ pub fn init_shaders() !c_uint {
     gl.CompileShader(vertex_shader);
     defer gl.DeleteShader(vertex_shader);
 
+    // read status of shader compilation
+    // throw error if compilation failed
     var status: c_int = undefined;
     gl.GetShaderiv(vertex_shader, gl.COMPILE_STATUS, &status);
     if (status == gl.FALSE) {
