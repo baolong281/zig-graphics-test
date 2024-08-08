@@ -41,7 +41,7 @@ fn initGLFW() !*c_long {
 
     std.debug.print("GLFW Init Succeeded.\n", .{});
 
-    const window: *glfw.Window = try glfw.createWindow(WIDTH, HEIGHT, "Hello World", null, null);
+    const window: *glfw.Window = try glfw.createWindow(WIDTH, HEIGHT, "zig-graphics-test", null, null);
     glfw.makeContextCurrent(window);
 
     glfw.setInputMode(window, glfw.Cursor, glfw.CursorDisabled);
